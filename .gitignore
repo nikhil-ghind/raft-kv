@@ -1,0 +1,26 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Go
+vendor/
+*.test
+
+# Build
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Raft data
+data/
+*.wal

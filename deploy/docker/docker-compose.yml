@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  node1:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: raft-node1
+    environment:
+      RAFT_NODE_ID: node1
+      RAFT_LISTEN_ADDR: "0.0.0.0:50051"
+      RAFT_PEERS: "node2=raft-node2:50051,node3=raft-node3:50051"
+      RAFT_DATA_DIR: /data
+    ports:
+      - "50051:50051"
+    volumes:
+      - node1-data:/data
+    networks:
+      - raft-net
+
+  node2:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: raft-node2
+    environment:
+      RAFT_NODE_ID: node2
+      RAFT_LISTEN_ADDR: "0.0.0.0:50051"
+      RAFT_PEERS: "node1=raft-node1:50051,node3=raft-node3:50051"
+      RAFT_DATA_DIR: /data
+    ports:
+      - "50052:50051"
+    volumes:
+      - node2-data:/data
+    networks:
+      - raft-net
+
+  node3:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: raft-node3
+    environment:
+      RAFT_NODE_ID: node3
+      RAFT_LISTEN_ADDR: "0.0.0.0:50051"
+      RAFT_PEERS: "node1=raft-node1:50051,node2=raft-node2:50051"
+      RAFT_DATA_DIR: /data
+    ports:
+      - "50053:50051"
+    volumes:
+      - node3-data:/data
+    networks:
+      - raft-net
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+
+networks:
+  raft-net:
+    driver: bridge
