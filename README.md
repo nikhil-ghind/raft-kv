@@ -113,6 +113,30 @@ With Docker Compose running:
 ./scripts/partition.sh heal raft-node1
 ```
 
+## Tests
+
+```bash
+# Run all unit tests
+go test ./...
+
+# With race detector
+go test -race ./internal/raft/... ./internal/store/...
+
+# Verbose output for a single package
+go test -v ./internal/raft
+```
+
+End-to-end smoke test against a 3-node Compose cluster:
+
+```bash
+cd deploy/docker && docker compose up -d --build
+./bin/raft-kv-client --server localhost:50051 put hello world
+./bin/raft-kv-client --server localhost:50052 get hello   # follower read; should return "world" once replicated
+./scripts/partition.sh isolate raft-node1                  # force re-election if node1 was leader
+./bin/raft-kv-client --server localhost:50052 put k2 v2    # client should be redirected to the new leader
+./scripts/partition.sh heal raft-node1
+```
+
 ## Benchmarking
 
 ```bash
