@@ -4,27 +4,54 @@ A distributed key-value store built from scratch in Go with a custom Raft consen
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    client["raft-kv-client<br/>gRPC Put / Get / Delete"]
+
+    subgraph node["One node (cmd/server)"]
+        rpc["internal/rpc.Server<br/>Put and Delete reject with not-leader<br/>plus a leader hint; Get is served locally"]
+        raft["internal/raft.RaftNode<br/>Run loop over the election timer<br/>and the heartbeat timer"]
+        elec["election.go<br/>startElection, handleRequestVote,<br/>isLogUpToDate"]
+        repl["replication.go<br/>sendHeartbeats, replicateToFollower,<br/>nextIndex / matchIndex, advanceCommitIndex"]
+        rlog["log.go RaftLog<br/>in-memory entries plus wal.log,<br/>fsynced on append and replayed at startup"]
+        kv["internal/store.KVStore<br/>map guarded by an RWMutex"]
+        cfg["internal/config<br/>peers, election timeout range, heartbeat interval"]
+    end
+
+    peers["Peer nodes<br/>RequestVote and AppendEntries over gRPC"]
+
+    client --> rpc
+    rpc -->|"Propose(command)"| raft
+    rpc --> kv
+    raft --> elec
+    raft --> repl
+    raft --> rlog
+    elec <--> peers
+    repl <--> peers
+    repl -->|"commitIndex advances"| raft
+    raft -->|"applyCommitted: lastApplied catches up"| kv
+    cfg -.-> raft
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Node 1    │     │   Node 2    │     │   Node 3    │
-│  (Leader)   │◄───►│ (Follower)  │◄───►│ (Follower)  │
-│             │     │             │     │             │
-│ ┌─────────┐ │     │ ┌─────────┐ │     │ ┌─────────┐ │
-│ │KV Store │ │     │ │KV Store │ │     │ │KV Store │ │
-│ └─────────┘ │     │ └─────────┘ │     │ └─────────┘ │
-│ ┌─────────┐ │     │ ┌─────────┐ │     │ ┌─────────┐ │
-│ │Raft Log │ │     │ │Raft Log │ │     │ │Raft Log │ │
-│ └─────────┘ │     │ └─────────┘ │     │ └─────────┘ │
-│ ┌─────────┐ │     │ ┌─────────┐ │     │ ┌─────────┐ │
-│ │  WAL    │ │     │ │  WAL    │ │     │ │  WAL    │ │
-│ └─────────┘ │     │ └─────────┘ │     │ └─────────┘ │
-└─────────────┘     └─────────────┘     └─────────────┘
-       ▲
-       │ gRPC
-  ┌────┴────┐
-  │ Client  │
-  └─────────┘
+
+### Roles and transitions
+
+```mermaid
+stateDiagram-v2
+    [*] --> Follower: start, load persisted term and vote
+    Follower --> Candidate: election timer fires without a valid AppendEntries
+    Candidate --> Candidate: split vote, timer fires again on a higher term
+    Candidate --> Leader: votes from a majority
+    Candidate --> Follower: sees a higher term, or another leader appends
+    Leader --> Follower: sees a higher term in any response
+    note right of Leader
+        becomeLeader resets nextIndex to lastIndex plus one
+        and matchIndex to zero for every peer
+    end note
 ```
+
+### Election and replication over time
+
+<img src="docs/raft-rounds.svg" alt="Leader failure, a new election in term 2, then log replication and commit advance" width="900">
 
 **How Raft works (briefly):**
 
